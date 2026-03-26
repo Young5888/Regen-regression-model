@@ -1,0 +1,33 @@
+# Data
+raw_data/
+clean_data/
+results/
+
+# Exploration outputs
+2_data_exploration/outputs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+*.egg-info/
+.eggs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.local
+*.pem
