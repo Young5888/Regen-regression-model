@@ -11,6 +11,7 @@ Trains HistGradientBoostingRegressor models on COMPLETED trials:
   - Late joint: PHASE2 + PHASE2/PHASE3 + PHASE3; used to score PHASE2/PHASE3 trials.
 No StandardScaler; numeric NaNs are kept for HGBR. No phase one-hot inside each cohort.
 """
+
 import re
 import logging
 import sys
@@ -120,6 +121,8 @@ RAW_DATA = PROJECT_ROOT / "raw_data"
 
 # Single-phase models (enough samples each); mixed labels use joint pools below
 PHASE_SINGLE_MODELS = ("PHASE1", "PHASE2", "PHASE3")
+# Alias for scripts that import this name (e.g. 5_deviation/baseline_deviation.py)
+PHASES_WITH_DEDICATED_MODELS = PHASE_SINGLE_MODELS
 
 EARLY_JOINT_PHASES = frozenset({"PHASE1", "PHASE1/PHASE2", "PHASE2"})
 LATE_JOINT_PHASES = frozenset({"PHASE2", "PHASE2/PHASE3", "PHASE3"})
