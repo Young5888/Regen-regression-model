@@ -1,48 +1,160 @@
 # Duration Regression Model
 
-`sklearn.ensemble.HistGradientBoostingRegressor` predicting trial duration (days) for **COMPLETED** trials only — **one model per phase label** (PHASE1, PHASE1/PHASE2, PHASE2, PHASE2/PHASE3, PHASE3), no global scaling; the booster uses non-linear splits and native **NaN** handling in numeric features.
+## Overview
+This project builds a regression model to predict clinical trial duration (in days) using structured data from ClinicalTrials.gov.
+
+The model is trained only on **completed, industry-sponsored interventional trials**, and uses engineered features capturing study design, eligibility criteria, site footprint, and outcome structure.
+
+To account for structural differences across trial phases, we train **separate models for each phase group**:
+- PHASE1
+- PHASE1/PHASE2
+- PHASE2
+- PHASE2/PHASE3
+- PHASE3
+
+---
+
+## Model Choice
+We use `HistGradientBoostingRegressor` with:
+- `max_iter = 200`
+- `random_state = 42`
+
+Additionally, the model is wrapped in `TransformedTargetRegressor`:
+- Target is transformed using `log1p`
+- Predictions are inverse-transformed using `expm1`
+
+### Why this approach?
+- Captures **non-linear relationships** in structured tabular data  
+- Handles **missing values (NaN)** natively  
+- Does not require feature scaling  
+- Log-transform stabilizes variance and improves regression performance  
+
+---
 
 ## Target
-- `duration_days` — time from start to primary completion
-- Preprocessing keeps only trials with **14 ≤ duration_days ≤ 3650** (drop sub-two-week and over-10-year windows as outliers)
+- `duration_days` = time from study start to primary completion  
 
-## Features (ablation-tested, best-performing subset)
+Preprocessing ensures:
+- Only **completed trials**
+- Only **14 ≤ duration_days ≤ 3650**
+- Removes implausible short and extreme-duration trials  
 
-### Core features (always included)
-- `phase` — defines which dedicated model is trained (not one-hot encoded inside each single-phase model)
-- `enrollment` — planned enrollment
-- `n_sponsors` — number of sponsors
-- `number_of_arms` — number of arms
-- `start_year` — trial start year
-- `category` — therapeutic category (one-hot, 132 levels)
-- `downcase_mesh_term` — MeSH condition terms (one-hot)
-- `intervention_type` — intervention types (one-hot)
+---
 
-### Eligibility (kept from ablation)
-- `gender`, `minimum_age`, `maximum_age`, `adult`, `child`, `older_adult`
+## Data Filtering
+The dataset is filtered to improve reliability:
 
-### Site footprint (kept from ablation)
-- `number_of_facilities`, `number_of_countries`, `us_only`, `has_single_facility`
+- Only **INTERVENTIONAL** studies  
+- Only trials with **INDUSTRY sponsors**  
+- Excludes **WITHDRAWN** studies  
+- Valid date range: **1980–2027**  
+- Removes trials with missing or invalid dates  
 
-### Design (kept from ablation)
-- `randomized`, `intervention_model`, `masking_depth_score`, `primary_purpose`, `design_complexity_composite`
+---
 
-### Arm/intervention (kept from ablation)
-- `number_of_interventions`, `intervention_type_diversity`, `mono_therapy`, `has_placebo`, `has_active_comparator`, `n_mesh_intervention_terms`
+## Features
 
-### Design outcomes (from design_outcomes table)
-- `max_planned_followup_days` — max planned follow-up parsed from time_frame
-- `n_primary_outcomes`, `n_secondary_outcomes`, `n_outcomes`
-- `has_survival_endpoint`, `has_safety_endpoint` — flags from measure/description
-- `endpoint_complexity_score` — composite of outcome count and endpoint types
+### Core features
+- `phase`
+- `enrollment`
+- `n_sponsors`
+- `number_of_arms`
+- `start_year`
+- `category` (one-hot encoded)
+- `downcase_mesh_term` (top 50 encoded)
+- `intervention_type` (top 15 encoded)
+
+---
+
+### Eligibility features
+- `gender`, `minimum_age`, `maximum_age`
+- `adult`, `child`, `older_adult`
+
+### Eligibility text features (derived from criteria)
+- `eligibility_criteria_char_len`
+- `eligibility_n_inclusion_tildes`
+- `eligibility_n_exclusion_tildes`
+- `eligibility_has_burden_procedure`
+
+These capture **complexity of eligibility criteria** :contentReference[oaicite:3]{index=3}  
+
+---
+
+### Site footprint
+- `number_of_facilities`
+- `number_of_countries`
+- `us_only`
+- `has_single_facility`
+- `facility_density`
+
+---
+
+### Design features
+- `randomized`
+- `intervention_model`
+- `primary_purpose`
+- `masking_depth_score`
+- `design_complexity_composite`
+
+Composite features combine multiple signals (e.g., masking + arms)
+
+---
+
+### Arm / intervention complexity
+- `number_of_interventions`
+- `intervention_type_diversity`
+- `mono_therapy`
+- `has_placebo`
+- `has_active_comparator`
+- `n_mesh_intervention_terms`
+
+---
+
+### Outcome complexity
+- `max_planned_followup_days`
+- `n_primary_outcomes`, `n_secondary_outcomes`
+- `has_survival_endpoint`
+- `has_safety_endpoint`
+- `endpoint_complexity_score`
+
+Derived from outcome descriptions and time frames
+
+---
 
 ## Training
-- Five independent `HistGradientBoostingRegressor` models, one per label: **PHASE1**, **PHASE1/PHASE2**, **PHASE2**, **PHASE2/PHASE3**, **PHASE3**.
-- **No** `StandardScaler`; numeric features keep **NaN** where missing so HGBR can use missingness in splits.
-- Phase is **not** one-hot encoded inside each model (constant within cohort).
+- One model per phase group  
+- No `StandardScaler` (tree-based model)  
+- Missing values preserved as NaN  
+
+### Data split
+- 60% training  
+- 20% validation  
+- 20% test  
+- `random_state = 42`
+
+---
 
 ## Metrics
-- See `results/regression_report.txt` after `python 4_regression/train_regression.py` — train / val / **test** RMSE, MAE, R² **per phase**, plus a summary of test R² by phase.
+Evaluation is performed using:
 
-## Train/val/test split
-Per phase: 60% / 20% / 20%, `random_state=42`
+- RMSE (Root Mean Squared Error)  
+- MAE (Mean Absolute Error)  
+- R² (coefficient of determination)  
+
+Metrics are reported **per phase**
+
+---
+
+## Assumptions
+- Completed trials reflect true realized durations  
+- Log transformation improves model stability  
+- Phase-specific models capture structural differences  
+
+---
+
+## Limitations
+- Excludes ongoing and terminated trials → survivorship bias  
+- Does not capture external delays (regulatory, funding)  
+- High-cardinality features may introduce sparsity  
+- Performance varies by phase depending on data size  
+
